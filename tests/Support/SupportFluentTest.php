@@ -17,7 +17,6 @@ class SupportFluentTest extends TestCase
 
         $refl = new ReflectionObject($fluent);
         $attributes = $refl->getProperty('attributes');
-        $attributes->setAccessible(true);
 
         $this->assertEquals($array, $attributes->getValue($fluent));
         $this->assertEquals($array, $fluent->getAttributes());
@@ -30,7 +29,6 @@ class SupportFluentTest extends TestCase
 
         $refl = new ReflectionObject($fluent);
         $attributes = $refl->getProperty('attributes');
-        $attributes->setAccessible(true);
 
         $this->assertEquals($array, $attributes->getValue($fluent));
         $this->assertEquals($array, $fluent->getAttributes());
@@ -43,7 +41,6 @@ class SupportFluentTest extends TestCase
 
         $refl = new ReflectionObject($fluent);
         $attributes = $refl->getProperty('attributes');
-        $attributes->setAccessible(true);
 
         $this->assertEquals($array, $attributes->getValue($fluent));
         $this->assertEquals($array, $fluent->getAttributes());
@@ -112,6 +109,29 @@ class SupportFluentTest extends TestCase
         $results = $fluent->toJson();
 
         $this->assertJsonStringEqualsJsonString(json_encode(['foo']), $results);
+    }
+
+    public function testScope()
+    {
+        $fluent = new Fluent(['user' => ['name' => 'taylor']]);
+        $this->assertEquals(['taylor'], $fluent->scope('user.name')->toArray());
+        $this->assertEquals(['dayle'], $fluent->scope('user.age', 'dayle')->toArray());
+
+        $fluent = new Fluent(['products' => ['forge', 'vapour', 'spark']]);
+        $this->assertEquals(['forge', 'vapour', 'spark'], $fluent->scope('products')->toArray());
+        $this->assertEquals(['foo', 'bar'], $fluent->scope('missing', ['foo', 'bar'])->toArray());
+
+        $fluent = new Fluent(['authors' => ['taylor' => ['products' => ['forge', 'vapour', 'spark']]]]);
+        $this->assertEquals(['forge', 'vapour', 'spark'], $fluent->scope('authors.taylor.products')->toArray());
+    }
+
+    public function testToCollection()
+    {
+        $fluent = new Fluent(['forge', 'vapour', 'spark']);
+        $this->assertEquals(['forge', 'vapour', 'spark'], $fluent->collect()->all());
+
+        $fluent = new Fluent(['authors' => ['taylor' => ['products' => ['forge', 'vapour', 'spark']]]]);
+        $this->assertEquals(['forge', 'vapour', 'spark'], $fluent->collect('authors.taylor.products')->all());
     }
 }
 

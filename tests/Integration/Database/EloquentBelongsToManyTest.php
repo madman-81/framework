@@ -22,7 +22,7 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
         Carbon::setTestNow(null);
     }
 
-    protected function defineDatabaseMigrationsAfterDatabaseRefreshed()
+    protected function afterRefreshingDatabase()
     {
         Schema::create('users', function (Blueprint $table) {
             $table->increments('id');
@@ -45,6 +45,13 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
             $table->timestamps();
         });
 
+        Schema::create('unique_tags', function (Blueprint $table) {
+            $table->increments('id');
+            $table->string('name')->unique();
+            $table->string('type')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('users_posts', function (Blueprint $table) {
             $table->increments('id');
             $table->string('user_uuid');
@@ -54,6 +61,15 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
         });
 
         Schema::create('posts_tags', function (Blueprint $table) {
+            $table->integer('post_id');
+            $table->integer('tag_id')->default(0);
+            $table->string('tag_name')->default('')->nullable();
+            $table->string('flag')->default('')->nullable();
+            $table->string('isActive')->default('')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('posts_unique_tags', function (Blueprint $table) {
             $table->integer('post_id');
             $table->integer('tag_id')->default(0);
             $table->string('tag_name')->default('')->nullable();
@@ -586,6 +602,47 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
         $this->assertTrue($tag->is($post->tags()->first()));
     }
 
+    public function testCreateOrFirst()
+    {
+        $post = Post::create(['title' => Str::random()]);
+
+        $tag = UniqueTag::create(['name' => Str::random()]);
+
+        $post->tagsUnique()->attach(UniqueTag::all());
+
+        $this->assertEquals($tag->id, $post->tagsUnique()->createOrFirst(['name' => $tag->name])->id);
+
+        $new = $post->tagsUnique()->createOrFirst(['name' => 'wavez']);
+        $this->assertSame('wavez', $new->name);
+        $this->assertNotNull($new->id);
+    }
+
+    public function testCreateOrFirstUnrelatedExisting()
+    {
+        $post = Post::create(['title' => Str::random()]);
+
+        $name = Str::random();
+        $tag = UniqueTag::create(['name' => $name]);
+
+        $postTag = $post->tagsUnique()->createOrFirst(['name' => $name]);
+        $this->assertTrue($postTag->exists);
+        $this->assertTrue($postTag->is($tag));
+        $this->assertTrue($tag->is($post->tagsUnique()->first()));
+    }
+
+    public function testCreateOrFirstWithinTransaction()
+    {
+        $post = Post::create(['title' => Str::random()]);
+
+        $tag = UniqueTag::create(['name' => Str::random()]);
+
+        $post->tagsUnique()->attach(UniqueTag::all());
+
+        DB::transaction(function () use ($tag, $post) {
+            $this->assertEquals($tag->id, $post->tagsUnique()->createOrFirst(['name' => $tag->name])->id);
+        });
+    }
+
     public function testFirstOrNewMethodWithValues()
     {
         $post = Post::create(['title' => Str::random()]);
@@ -875,14 +932,10 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
         $post->tags()->touch();
 
         foreach ($post->tags()->pluck('tags.updated_at') as $date) {
-            if ($this->driver === 'sqlsrv') {
-                $this->assertSame('2017-10-10 10:10:10.000', $date);
-            } else {
-                $this->assertSame('2017-10-10 10:10:10', $date);
-            }
+            $this->assertSame('2017-10-10 10:10:10', $date->toDateTimeString());
         }
 
-        $this->assertNotSame('2017-10-10 10:10:10', Tag::find(2)->updated_at);
+        $this->assertNotSame('2017-10-10 10:10:10', Tag::find(2)->updated_at?->toDateTimeString());
     }
 
     public function testWherePivotOnString()
@@ -930,6 +983,36 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
         $this->assertEquals($relationTag->getAttributes(), $tag->getAttributes());
 
         $relationTag = $post->tags()->wherePivot('flag', '=', true)->first();
+        $this->assertEquals($relationTag->getAttributes(), $tag->getAttributes());
+    }
+
+    public function testOrWherePivotOnBoolean()
+    {
+        $tag = Tag::create(['name' => Str::random()])->fresh();
+        $post = Post::create(['title' => Str::random()]);
+
+        DB::table('posts_tags')->insert([
+            ['post_id' => $post->id, 'tag_id' => $tag->id, 'flag' => true, 'isActive' => false],
+        ]);
+
+        $relationTag = $post->tags()->wherePivot('isActive', false)->orWherePivot('flag', true)->first();
+        $this->assertEquals($relationTag->getAttributes(), $tag->getAttributes());
+    }
+
+    public function testWherePivotNotBetween()
+    {
+        $tag = Tag::create(['name' => Str::random()])->fresh();
+        $post = Post::create(['title' => Str::random()]);
+
+        DB::table('posts_tags')->insert([
+            ['post_id' => $post->id, 'tag_id' => $tag->id, 'flag' => true, 'isActive' => false],
+        ]);
+
+        $relationTag = $post->tags()
+            ->wherePivotNotBetween('isActive', ['true', 'false'])
+            ->orWherePivotNotBetween('flag', ['true', 'false'])
+            ->first();
+
         $this->assertEquals($relationTag->getAttributes(), $tag->getAttributes());
     }
 
@@ -1029,13 +1112,13 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
         $post = Post::create(['title' => Str::random()]);
 
         DB::table('posts_tags')->insert([
-            ['post_id' => $post->id, 'tag_id' => $tag1->id, 'flag' => 'foo'],
+            ['post_id' => $post->id, 'tag_id' => $tag1->id, 'flag' => 'foo', 'isActive' => true],
         ]);
         DB::table('posts_tags')->insert([
-            ['post_id' => $post->id, 'tag_id' => $tag2->id, 'flag' => null],
+            ['post_id' => $post->id, 'tag_id' => $tag2->id, 'flag' => null, 'isActive' => false],
         ]);
 
-        $relationTag = $post->tagsWithExtraPivot()->wherePivotNotNull('flag')->first();
+        $relationTag = $post->tagsWithExtraPivot()->wherePivotNotNull('flag')->orWherePivotNotNull('isActive')->first();
         $this->assertEquals($relationTag->getAttributes(), $tag1->getAttributes());
     }
 
@@ -1330,6 +1413,14 @@ class Post extends Model
             ->wherePivot('flag', '<>', 'exclude');
     }
 
+    public function tagsUnique()
+    {
+        return $this->belongsToMany(UniqueTag::class, 'posts_unique_tags', 'post_id', 'tag_id')
+            ->withPivot('flag')
+            ->withTimestamps()
+            ->wherePivot('flag', '<>', 'exclude');
+    }
+
     public function tagsWithExtraPivot()
     {
         return $this->belongsToMany(Tag::class, 'posts_tags', 'post_id', 'tag_id')
@@ -1390,6 +1481,18 @@ class Tag extends Model
     public function posts()
     {
         return $this->belongsToMany(Post::class, 'posts_tags', 'tag_id', 'post_id');
+    }
+}
+
+class UniqueTag extends Model
+{
+    public $table = 'unique_tags';
+    public $timestamps = true;
+    protected $fillable = ['name', 'type'];
+
+    public function posts()
+    {
+        return $this->belongsToMany(Post::class, 'posts_unique_tags', 'tag_id', 'post_id');
     }
 }
 

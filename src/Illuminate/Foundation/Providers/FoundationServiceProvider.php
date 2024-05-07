@@ -2,6 +2,8 @@
 
 namespace Illuminate\Foundation\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\MaintenanceMode as MaintenanceModeContract;
@@ -13,6 +15,7 @@ use Illuminate\Foundation\Http\HtmlDumper;
 use Illuminate\Foundation\MaintenanceModeManager;
 use Illuminate\Foundation\Precognition;
 use Illuminate\Foundation\Vite;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Request;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\AggregateServiceProvider;
@@ -41,6 +44,7 @@ class FoundationServiceProvider extends AggregateServiceProvider
      * @var array
      */
     public $singletons = [
+        HttpFactory::class => HttpFactory::class,
         Vite::class => Vite::class,
     ];
 
@@ -67,6 +71,7 @@ class FoundationServiceProvider extends AggregateServiceProvider
     {
         parent::register();
 
+        $this->registerConsoleSchedule();
         $this->registerDumper();
         $this->registerRequestValidation();
         $this->registerRequestSignatureValidation();
@@ -75,17 +80,29 @@ class FoundationServiceProvider extends AggregateServiceProvider
     }
 
     /**
-     * Register an var dumper (with source) to debug variables.
+     * Register the console schedule implementation.
+     *
+     * @return void
+     */
+    public function registerConsoleSchedule()
+    {
+        $this->app->singleton(Schedule::class, function ($app) {
+            return $app->make(ConsoleKernel::class)->resolveConsoleSchedule();
+        });
+    }
+
+    /**
+     * Register a var dumper (with source) to debug variables.
      *
      * @return void
      */
     public function registerDumper()
     {
-        AbstractCloner::$defaultCasters[ConnectionInterface::class] = [StubCaster::class, 'cutInternals'];
-        AbstractCloner::$defaultCasters[Container::class] = [StubCaster::class, 'cutInternals'];
-        AbstractCloner::$defaultCasters[Dispatcher::class] = [StubCaster::class, 'cutInternals'];
-        AbstractCloner::$defaultCasters[Factory::class] = [StubCaster::class, 'cutInternals'];
-        AbstractCloner::$defaultCasters[Grammar::class] = [StubCaster::class, 'cutInternals'];
+        AbstractCloner::$defaultCasters[ConnectionInterface::class] ??= [StubCaster::class, 'cutInternals'];
+        AbstractCloner::$defaultCasters[Container::class] ??= [StubCaster::class, 'cutInternals'];
+        AbstractCloner::$defaultCasters[Dispatcher::class] ??= [StubCaster::class, 'cutInternals'];
+        AbstractCloner::$defaultCasters[Factory::class] ??= [StubCaster::class, 'cutInternals'];
+        AbstractCloner::$defaultCasters[Grammar::class] ??= [StubCaster::class, 'cutInternals'];
 
         $basePath = $this->app->basePath();
 
@@ -150,6 +167,10 @@ class FoundationServiceProvider extends AggregateServiceProvider
 
         Request::macro('hasValidSignatureWhileIgnoring', function ($ignoreQuery = [], $absolute = true) {
             return URL::hasValidSignature($this, $absolute, $ignoreQuery);
+        });
+
+        Request::macro('hasValidRelativeSignatureWhileIgnoring', function ($ignoreQuery = []) {
+            return URL::hasValidSignature($this, $absolute = false, $ignoreQuery);
         });
     }
 

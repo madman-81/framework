@@ -4,6 +4,7 @@ namespace Illuminate\Validation;
 
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Support\Traits\Macroable;
+use Illuminate\Validation\Rules\Can;
 use Illuminate\Validation\Rules\Dimensions;
 use Illuminate\Validation\Rules\Enum;
 use Illuminate\Validation\Rules\ExcludeIf;
@@ -21,16 +22,41 @@ class Rule
     use Macroable;
 
     /**
-     * Create a new conditional rule set.
+     * Get a can constraint builder instance.
+     *
+     * @param  string  $ability
+     * @param  mixed  ...$arguments
+     * @return \Illuminate\Validation\Rules\Can
+     */
+    public static function can($ability, ...$arguments)
+    {
+        return new Can($ability, $arguments);
+    }
+
+    /**
+     * Apply the given rules if the given condition is truthy.
      *
      * @param  callable|bool  $condition
-     * @param  array|string|\Closure  $rules
-     * @param  array|string|\Closure  $defaultRules
+     * @param  \Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\InvokableRule|\Illuminate\Contracts\Validation\Rule|\Closure|array|string  $rules
+     * @param  \Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\InvokableRule|\Illuminate\Contracts\Validation\Rule|\Closure|array|string  $defaultRules
      * @return \Illuminate\Validation\ConditionalRules
      */
     public static function when($condition, $rules, $defaultRules = [])
     {
         return new ConditionalRules($condition, $rules, $defaultRules);
+    }
+
+    /**
+     * Apply the given rules if the given condition is falsy.
+     *
+     * @param  callable|bool  $condition
+     * @param  \Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\InvokableRule|\Illuminate\Contracts\Validation\Rule|\Closure|array|string  $rules
+     * @param  \Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Contracts\Validation\InvokableRule|\Illuminate\Contracts\Validation\Rule|\Closure|array|string  $defaultRules
+     * @return \Illuminate\Validation\ConditionalRules
+     */
+    public static function unless($condition, $rules, $defaultRules = [])
+    {
+        return new ConditionalRules($condition, $defaultRules, $rules);
     }
 
     /**
@@ -71,7 +97,7 @@ class Rule
     /**
      * Get an in constraint builder instance.
      *
-     * @param  \Illuminate\Contracts\Support\Arrayable|array|string  $values
+     * @param  \Illuminate\Contracts\Support\Arrayable|\BackedEnum|\UnitEnum|array|string  $values
      * @return \Illuminate\Validation\Rules\In
      */
     public static function in($values)
@@ -86,7 +112,7 @@ class Rule
     /**
      * Get a not_in constraint builder instance.
      *
-     * @param  \Illuminate\Contracts\Support\Arrayable|array|string  $values
+     * @param  \Illuminate\Contracts\Support\Arrayable|\BackedEnum|\UnitEnum|array|string  $values
      * @return \Illuminate\Validation\Rules\NotIn
      */
     public static function notIn($values)
@@ -134,7 +160,7 @@ class Rule
     /**
      * Get an enum constraint builder instance.
      *
-     * @param  string  $type
+     * @param  class-string  $type
      * @return \Illuminate\Validation\Rules\Enum
      */
     public static function enum($type)

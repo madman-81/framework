@@ -4,10 +4,9 @@ namespace Illuminate\Tests\Integration\Cache;
 
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 
-/**
- * @requires extension memcached
- */
+#[RequiresPhpExtension('memcached')]
 class MemcachedCacheLockTestCase extends MemcachedIntegrationTestCase
 {
     public function testMemcachedLocksCanBeAcquiredAndReleased()
@@ -79,5 +78,28 @@ class MemcachedCacheLockTestCase extends MemcachedIntegrationTestCase
         $secondLock->release();
 
         $this->assertTrue(Cache::store('memcached')->lock('foo')->get());
+    }
+
+    public function testOwnerStatusCanBeCheckedAfterRestoringLock()
+    {
+        Cache::store('memcached')->lock('foo')->forceRelease();
+
+        $firstLock = Cache::store('memcached')->lock('foo', 10);
+        $this->assertTrue($firstLock->get());
+        $owner = $firstLock->owner();
+
+        $secondLock = Cache::store('memcached')->restoreLock('foo', $owner);
+        $this->assertTrue($secondLock->isOwnedByCurrentProcess());
+    }
+
+    public function testOtherOwnerDoesNotOwnLockAfterRestore()
+    {
+        Cache::store('memcached')->lock('foo')->forceRelease();
+
+        $firstLock = Cache::store('memcached')->lock('foo', 10);
+        $this->assertTrue($firstLock->get());
+
+        $secondLock = Cache::store('memcached')->restoreLock('foo', 'other_owner');
+        $this->assertFalse($secondLock->isOwnedByCurrentProcess());
     }
 }

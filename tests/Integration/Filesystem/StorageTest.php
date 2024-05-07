@@ -5,11 +5,10 @@ namespace Illuminate\Tests\Integration\Filesystem;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\Attributes\RequiresOperatingSystem;
 use Symfony\Component\Process\Process;
 
-/**
- * @requires OS Linux|Darwin
- */
+#[RequiresOperatingSystem('Linux|Darwin')]
 class StorageTest extends TestCase
 {
     protected $stubFile;
@@ -78,5 +77,20 @@ class StorageTest extends TestCase
 
         Storage::disk('public')->assertMissing('StardewTaylor.png');
         $this->assertFalse(Storage::disk('public')->exists('StardewTaylor.png'));
+    }
+
+    public function testItCanDeleteDirectoryViaStorage()
+    {
+        if (! Storage::disk('public')->exists('testdir')) {
+            Storage::disk('public')->makeDirectory('testdir');
+        }
+
+        Storage::disk('public')->assertExists('testdir');
+        $this->assertTrue(Storage::disk('public')->exists('testdir'));
+
+        Storage::disk('public')->deleteDirectory('testdir');
+
+        Storage::disk('public')->assertMissing('testdir');
+        $this->assertFalse(Storage::disk('public')->exists('testdir'));
     }
 }

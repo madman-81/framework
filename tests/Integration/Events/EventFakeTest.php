@@ -3,19 +3,24 @@
 namespace Illuminate\Tests\Integration\Events;
 
 use Closure;
+use Exception;
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\ExpectationFailedException;
 
 class EventFakeTest extends TestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
+    use LazilyRefreshDatabase;
 
+    protected function afterRefreshingDatabase()
+    {
         Schema::create('posts', function (Blueprint $table) {
             $table->increments('id');
             $table->string('title');
@@ -24,11 +29,9 @@ class EventFakeTest extends TestCase
         });
     }
 
-    protected function tearDown(): void
+    protected function beforeRefreshingDatabase()
     {
         Schema::dropIfExists('posts');
-
-        parent::tearDown();
     }
 
     public function testNonFakedEventGetsProperlyDispatched()
@@ -147,6 +150,7 @@ class EventFakeTest extends TestCase
             'Illuminate\\Tests\\Integration\\Events\\PostAutoEventSubscriber@handle',
             PostEventSubscriber::class,
             [PostEventSubscriber::class, 'foo'],
+            InvokableEventSubscriber::class,
         ]);
 
         foreach ($listenersOfSameEventInRandomOrder as $listener) {
@@ -172,6 +176,7 @@ class EventFakeTest extends TestCase
         Event::assertListening(NonImportantEvent::class, Closure::class);
         Event::assertListening('eloquent.saving: '.Post::class, PostObserver::class.'@saving');
         Event::assertListening('eloquent.saving: '.Post::class, [PostObserver::class, 'saving']);
+        Event::assertListening('event', InvokableEventSubscriber::class);
     }
 
     public function testMissingMethodsAreForwarded()
@@ -179,6 +184,57 @@ class EventFakeTest extends TestCase
         Event::macro('foo', fn () => 'bar');
 
         $this->assertEquals('bar', Event::fake()->foo());
+    }
+
+    public function testShouldDispatchAfterCommitEventsAreNotDispatchedIfTransactionFails()
+    {
+        Event::fake();
+
+        try {
+            DB::transaction(function () {
+                Event::dispatch(new ShouldDispatchAfterCommitEvent());
+
+                throw new Exception('foo');
+            });
+        } catch (Exception $e) {
+        }
+
+        Event::assertNotDispatched(ShouldDispatchAfterCommitEvent::class);
+    }
+
+    public function testShouldDispatchAfterCommitEventsAreDispatchedIfTransactionSucceeds()
+    {
+        Event::fake();
+
+        DB::transaction(function () {
+            Event::dispatch(new ShouldDispatchAfterCommitEvent());
+        });
+
+        Event::assertDispatched(ShouldDispatchAfterCommitEvent::class);
+    }
+
+    public function testShouldDispatchAfterCommitEventsAreDispatchedIfThereIsNoTransaction()
+    {
+        Event::fake();
+
+        Event::dispatch(new ShouldDispatchAfterCommitEvent());
+        Event::assertDispatched(ShouldDispatchAfterCommitEvent::class);
+    }
+
+    public function testAssertNothingDispatchedShouldDispatchAfterCommit()
+    {
+        Event::fake();
+        Event::assertNothingDispatched();
+
+        Event::dispatch(new ShouldDispatchAfterCommitEvent);
+        Event::dispatch(new ShouldDispatchAfterCommitEvent);
+
+        try {
+            Event::assertNothingDispatched();
+            $this->fail();
+        } catch (ExpectationFailedException $e) {
+            $this->assertStringContainsString('2 unexpected events were dispatched.', $e->getMessage());
+        }
     }
 }
 
@@ -237,4 +293,17 @@ class PostObserver
     {
         $post->slug = sprintf('%s-Test', $post->title);
     }
+}
+
+class InvokableEventSubscriber
+{
+    public function __invoke($event)
+    {
+        //
+    }
+}
+
+class ShouldDispatchAfterCommitEvent implements ShouldDispatchAfterCommit
+{
+    //
 }

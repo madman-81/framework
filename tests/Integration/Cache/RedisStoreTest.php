@@ -2,8 +2,11 @@
 
 namespace Illuminate\Tests\Integration\Cache;
 
+use DateTime;
 use Illuminate\Foundation\Testing\Concerns\InteractsWithRedis;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Sleep;
 use Orchestra\Testbench\TestCase;
 
 class RedisStoreTest extends TestCase
@@ -22,6 +25,33 @@ class RedisStoreTest extends TestCase
         parent::tearDown();
 
         $this->tearDownRedis();
+    }
+
+    public function testCacheTtl(): void
+    {
+        $store = Cache::store('redis');
+        $store->clear();
+
+        while ((microtime(true) - time()) > 0.5 && (microtime(true) - time()) < 0.6) {
+            //
+        }
+
+        $store->put('hello', 'world', 1);
+        $putAt = microtime(true);
+
+        Sleep::for(600)->milliseconds();
+        $this->assertTrue((microtime(true) - $putAt) < 1);
+        $this->assertSame('world', $store->get('hello'));
+
+        // Although this key expires after exactly 1 second, Redis has a
+        // 0-1 millisecond error rate on expiring keys (as of Redis 2.6) so
+        // for a non-flakey test we need to account for the millisecond.
+        // see: https://redis.io/commands/expire/
+        while ((microtime(true) - $putAt) < 1.001) {
+            //
+        }
+
+        $this->assertNull($store->get('hello'));
     }
 
     public function testItCanStoreInfinite()
@@ -44,6 +74,20 @@ class RedisStoreTest extends TestCase
         $result = Cache::store('redis')->put('foo', NAN);
         $this->assertTrue($result);
         $this->assertNan(Cache::store('redis')->get('foo'));
+    }
+
+    public function testItCanExpireWithZeroTTL()
+    {
+        Cache::store('redis')->clear();
+
+        $result = Cache::store('redis')->put('foo', 10, 10);
+        $this->assertTrue($result);
+
+        $result = Cache::store('redis')->put('foo', 10, 0);
+        $this->assertTrue($result);
+
+        $value = Cache::store('redis')->get('foo');
+        $this->assertNull($value);
     }
 
     public function testTagsCanBeAccessed()
@@ -110,6 +154,30 @@ class RedisStoreTest extends TestCase
         $this->assertEquals(0, count($keyCount));
     }
 
+    public function testPastTtlTagEntriesAreNotAdded()
+    {
+        Cache::store('redis')->clear();
+
+        Cache::store('redis')->tags(['votes'])->add('person-1', 0, new DateTime('yesterday'));
+
+        $value = Cache::store('redis')->tags(['votes'])->get('person-1');
+        $this->assertNull($value);
+
+        $keyCount = Cache::store('redis')->connection()->keys('*');
+        $this->assertEquals(0, count($keyCount));
+    }
+
+    public function testPutPastTtlTagEntriesProperlyTurnStale()
+    {
+        Cache::store('redis')->clear();
+
+        Cache::store('redis')->tags(['votes'])->put('person-1', 0, new DateTime('yesterday'));
+        Cache::store('redis')->tags(['votes'])->flushStale();
+
+        $keyCount = Cache::store('redis')->connection()->keys('*');
+        $this->assertEquals(0, count($keyCount));
+    }
+
     public function testTagsCanBeFlushedBySingleKey()
     {
         Cache::store('redis')->clear();
@@ -142,5 +210,25 @@ class RedisStoreTest extends TestCase
 
         $keyCount = Cache::store('redis')->connection()->keys('*');
         $this->assertEquals(4, count($keyCount)); // Sets for people, authors, and artists + individual entry for Jennifer
+    }
+
+    public function testMultipleItemsCanBeSetAndRetrieved()
+    {
+        $store = Cache::store('redis');
+        $result = $store->put('foo', 'bar', 10);
+        $resultMany = $store->putMany([
+            'fizz' => 'buz',
+            'quz' => 'baz',
+        ], 10);
+        $this->assertTrue($result);
+        $this->assertTrue($resultMany);
+        $this->assertEquals([
+            'foo' => 'bar',
+            'fizz' => 'buz',
+            'quz' => 'baz',
+            'norf' => null,
+        ], $store->many(['foo', 'fizz', 'quz', 'norf']));
+
+        $this->assertEquals([], $store->many([]));
     }
 }

@@ -4,8 +4,10 @@ namespace Illuminate\Database\Console\Migrations;
 
 use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Support\Collection;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputOption;
 
+#[AsCommand(name: 'migrate:status')]
 class StatusCommand extends BaseCommand
 {
     /**
@@ -60,20 +62,24 @@ class StatusCommand extends BaseCommand
 
             $batches = $this->migrator->getRepository()->getMigrationBatches();
 
-            if (count($migrations = $this->getStatusFor($ran, $batches)) > 0) {
+            $migrations = $this->getStatusFor($ran, $batches)
+                ->when($this->option('pending'), fn ($collection) => $collection->filter(function ($migration) {
+                    return str($migration[1])->contains('Pending');
+                }));
+
+            if (count($migrations) > 0) {
                 $this->newLine();
 
                 $this->components->twoColumnDetail('<fg=gray>Migration name</>', '<fg=gray>Batch / Status</>');
 
                 $migrations
-                    ->when($this->option('pending'), fn ($collection) => $collection->filter(function ($migration) {
-                        return str($migration[1])->contains('Pending');
-                    }))
                     ->each(
                         fn ($migration) => $this->components->twoColumnDetail($migration[0], $migration[1])
                     );
 
                 $this->newLine();
+            } elseif ($this->option('pending')) {
+                $this->components->info('No pending migrations');
             } else {
                 $this->components->info('No migrations found');
             }

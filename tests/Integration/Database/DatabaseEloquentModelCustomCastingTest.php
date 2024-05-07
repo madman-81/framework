@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
 
 class DatabaseEloquentModelCustomCastingTest extends DatabaseTestCase
 {
-    protected function defineDatabaseMigrationsAfterDatabaseRefreshed()
+    protected function afterRefreshingDatabase()
     {
         Schema::create('test_eloquent_model_with_custom_casts', function (Blueprint $table) {
             $table->increments('id');
@@ -103,6 +103,15 @@ class DatabaseEloquentModelCustomCastingTest extends DatabaseTestCase
         $model = new TestEloquentModelWithCustomCast;
         $model->birthday_at = now();
         $this->assertIsString($model->toArray()['birthday_at']);
+
+        $model = new TestEloquentModelWithCustomCast;
+        $now = now()->toImmutable();
+        $model->anniversary_on_with_object_caching = $now;
+        $model->anniversary_on_without_object_caching = $now;
+        $this->assertSame($now, $model->anniversary_on_with_object_caching);
+        $this->assertSame('UTC', $model->anniversary_on_with_object_caching->format('e'));
+        $this->assertNotSame($now, $model->anniversary_on_without_object_caching);
+        $this->assertNotSame('UTC', $model->anniversary_on_without_object_caching->format('e'));
     }
 
     public function testGetOriginalWithCastValueObjects()
@@ -158,6 +167,14 @@ class DatabaseEloquentModelCustomCastingTest extends DatabaseTestCase
         $model->decrement('price', '333.333');
 
         $this->assertSame((new Decimal('320.988'))->getValue(), $model->price->getValue());
+
+        $model->increment('price', new Decimal('100.001'));
+
+        $this->assertSame((new Decimal('420.989'))->getValue(), $model->price->getValue());
+
+        $model->decrement('price', new Decimal('200.002'));
+
+        $this->assertSame((new Decimal('220.987'))->getValue(), $model->price->getValue());
     }
 
     public function testSerializableCasts()
@@ -299,6 +316,8 @@ class TestEloquentModelWithCustomCast extends Model
         'value_object_caster_with_caster_instance' => ValueObjectWithCasterInstance::class,
         'undefined_cast_column' => UndefinedCast::class,
         'birthday_at' => DateObjectCaster::class,
+        'anniversary_on_with_object_caching' => DateTimezoneCasterWithObjectCaching::class.':America/New_York',
+        'anniversary_on_without_object_caching' => DateTimezoneCasterWithoutObjectCaching::class.':America/New_York',
     ];
 }
 
@@ -416,12 +435,12 @@ class DecimalCaster implements CastsAttributes, DeviatesCastableAttributes, Seri
 
     public function increment($model, $key, $value, $attributes)
     {
-        return new Decimal($attributes[$key] + $value);
+        return new Decimal($attributes[$key] + ($value instanceof Decimal ? (string) $value : $value));
     }
 
     public function decrement($model, $key, $value, $attributes)
     {
-        return new Decimal($attributes[$key] - $value);
+        return new Decimal($attributes[$key] - ($value instanceof Decimal ? (string) $value : $value));
     }
 
     public function serialize($model, $key, $value, $attributes)
@@ -583,4 +602,26 @@ class DateObjectCaster implements CastsAttributes
     {
         return $value->format('Y-m-d');
     }
+}
+
+class DateTimezoneCasterWithObjectCaching implements CastsAttributes
+{
+    public function __construct(private string $timezone = 'UTC')
+    {
+    }
+
+    public function get($model, $key, $value, $attributes)
+    {
+        return Carbon::parse($value, $this->timezone);
+    }
+
+    public function set($model, $key, $value, $attributes)
+    {
+        return $value->timezone($this->timezone)->format('Y-m-d');
+    }
+}
+
+class DateTimezoneCasterWithoutObjectCaching extends DateTimezoneCasterWithObjectCaching
+{
+    public bool $withoutObjectCaching = true;
 }

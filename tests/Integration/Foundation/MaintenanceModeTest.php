@@ -11,14 +11,21 @@ use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
+use Orchestra\Testbench\Http\Middleware\PreventRequestsDuringMaintenance as TestbenchPreventRequestsDuringMaintenance;
 use Orchestra\Testbench\TestCase;
 use Symfony\Component\HttpFoundation\Cookie;
 
 class MaintenanceModeTest extends TestCase
 {
-    protected function tearDown(): void
+    protected function setUp(): void
     {
-        @unlink(storage_path('framework/down'));
+        $this->beforeApplicationDestroyed(function () {
+            @unlink(storage_path('framework/down'));
+        });
+
+        parent::setUp();
+
+        $this->withoutMiddleware(TestbenchPreventRequestsDuringMaintenance::class);
     }
 
     public function testBasicMaintenanceModeResponse()
@@ -113,6 +120,25 @@ class MaintenanceModeTest extends TestCase
         $this->assertSame('Hello World', $response->original);
     }
 
+    public function testMaintenanceModeCanBeBypassedOnExcludedUrls()
+    {
+        $this->app->instance(PreventRequestsDuringMaintenance::class, new class($this->app) extends PreventRequestsDuringMaintenance
+        {
+            protected $except = ['/test'];
+        });
+
+        file_put_contents(storage_path('framework/down'), json_encode([
+            'retry' => 60,
+        ]));
+
+        Route::get('/test', fn () => 'Hello World')->middleware(PreventRequestsDuringMaintenance::class);
+
+        $response = $this->get('/test');
+
+        $response->assertStatus(200);
+        $this->assertSame('Hello World', $response->original);
+    }
+
     public function testMaintenanceModeCantBeBypassedWithInvalidCookie()
     {
         file_put_contents(storage_path('framework/down'), json_encode([
@@ -145,8 +171,6 @@ class MaintenanceModeTest extends TestCase
 
         Carbon::setTestNow(now()->addMonths(6));
         $this->assertFalse(MaintenanceModeBypassCookie::isValid($cookie->getValue(), 'test-key'));
-
-        Carbon::setTestNow(null);
     }
 
     public function testDispatchEventWhenMaintenanceModeIsEnabled()

@@ -17,6 +17,7 @@ use League\Flysystem\UnableToReadFile;
 use League\Flysystem\UnableToRetrieveMetadata;
 use League\Flysystem\UnableToWriteFile;
 use Mockery as m;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -182,6 +183,20 @@ class FilesystemAdapterTest extends TestCase
     {
         $filesystemAdapter = new FilesystemAdapter($this->filesystem, $this->adapter);
         $this->assertNull($filesystemAdapter->get('file.txt'));
+    }
+
+    public function testJsonReturnsDecodedJsonData()
+    {
+        $this->filesystem->write('file.json', '{"foo": "bar"}');
+        $filesystemAdapter = new FilesystemAdapter($this->filesystem, $this->adapter);
+        $this->assertSame(['foo' => 'bar'], $filesystemAdapter->json('file.json'));
+    }
+
+    public function testJsonReturnsNullIfJsonDataIsInvalid()
+    {
+        $this->filesystem->write('file.json', '{"foo":');
+        $filesystemAdapter = new FilesystemAdapter($this->filesystem, $this->adapter);
+        $this->assertNull($filesystemAdapter->json('file.json'));
     }
 
     public function testMimeTypeNotDetected()
@@ -412,9 +427,7 @@ class FilesystemAdapterTest extends TestCase
         $this->assertSame('normal file content', $filesystemAdapter->read($storagePath));
     }
 
-    /**
-     * @requires extension ftp
-     */
+    #[RequiresPhpExtension('ftp')]
     public function testCreateFtpDriver()
     {
         $filesystem = new FilesystemManager(new Application);

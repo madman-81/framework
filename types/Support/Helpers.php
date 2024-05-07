@@ -2,6 +2,16 @@
 
 use function PHPStan\Testing\assertType;
 
+assertType('int', once(fn () => 1));
+
+assertType('User', once(fn () => new User()));
+
+$value = once(function () { // @phpstan-ignore-line
+    //
+});
+
+assertType('null', $value);
+
 assertType('User', with(new User()));
 assertType('bool', with(new User())->save());
 
@@ -53,3 +63,7 @@ assertType('int', transform(new User(), fn () => 1));
 assertType('null', transform(null, fn () => 1));
 assertType('null', transform('', fn () => 1));
 assertType('null', transform([], fn () => 1));
+
+assertType('int|null', rescue(fn () => 123));
+assertType('int', rescue(fn () => 123, 345));
+assertType('int', rescue(fn () => 123, fn () => 345));

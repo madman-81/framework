@@ -27,6 +27,7 @@ use Illuminate\Support\Testing\Fakes\MailFake;
  * @method static \Illuminate\Mail\SentMessage|null plain(string $view, array $data, mixed $callback)
  * @method static string render(string|array $view, array $data = [])
  * @method static \Illuminate\Mail\SentMessage|null send(\Illuminate\Contracts\Mail\Mailable|string|array $view, array $data = [], \Closure|string|null $callback = null)
+ * @method static \Illuminate\Mail\SentMessage|null sendNow(\Illuminate\Contracts\Mail\Mailable|string|array $mailable, array $data = [], \Closure|string|null $callback = null)
  * @method static mixed queue(\Illuminate\Contracts\Mail\Mailable|string|array $view, string|null $queue = null)
  * @method static mixed onQueue(string $queue, \Illuminate\Contracts\Mail\Mailable $view)
  * @method static mixed queueOn(string $queue, \Illuminate\Contracts\Mail\Mailable $view)
@@ -48,6 +49,9 @@ use Illuminate\Support\Testing\Fakes\MailFake;
  * @method static void assertQueued(string|\Closure $mailable, callable|int|null $callback = null)
  * @method static void assertNotQueued(string|\Closure $mailable, callable|null $callback = null)
  * @method static void assertNothingQueued()
+ * @method static void assertSentCount(int $count)
+ * @method static void assertQueuedCount(int $count)
+ * @method static void assertOutgoingCount(int $count)
  * @method static \Illuminate\Support\Collection sent(string|\Closure $mailable, callable|null $callback = null)
  * @method static bool hasSent(string $mailable)
  * @method static \Illuminate\Support\Collection queued(string|\Closure $mailable, callable|null $callback = null)
@@ -65,10 +69,12 @@ class Mail extends Facade
      */
     public static function fake()
     {
-        return tap(new MailFake(static::getFacadeRoot()), function ($fake) {
-            if (! static::isFake()) {
-                static::swap($fake);
-            }
+        $actualMailManager = static::isFake()
+                ? static::getFacadeRoot()->manager
+                : static::getFacadeRoot();
+
+        return tap(new MailFake($actualMailManager), function ($fake) {
+            static::swap($fake);
         });
     }
 

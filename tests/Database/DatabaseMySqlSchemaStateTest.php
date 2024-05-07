@@ -5,14 +5,13 @@ namespace Illuminate\Tests\Database;
 use Generator;
 use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\Schema\MySqlSchemaState;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
 class DatabaseMySqlSchemaStateTest extends TestCase
 {
-    /**
-     * @dataProvider provider
-     */
+    #[DataProvider('provider')]
     public function testConnectionString(string $expectedConnectionString, array $expectedVariables, array $dbConfig): void
     {
         $connection = $this->createMock(MySqlConnection::class);
@@ -22,13 +21,13 @@ class DatabaseMySqlSchemaStateTest extends TestCase
 
         // test connectionString
         $method = new ReflectionMethod(get_class($schemaState), 'connectionString');
-        $connString = tap($method)->setAccessible(true)->invoke($schemaState);
+        $connString = $method->invoke($schemaState);
 
         self::assertEquals($expectedConnectionString, $connString);
 
         // test baseVariables
         $method = new ReflectionMethod(get_class($schemaState), 'baseVariables');
-        $variables = tap($method)->setAccessible(true)->invoke($schemaState, $dbConfig);
+        $variables = $method->invoke($schemaState, $dbConfig);
 
         self::assertEquals($expectedVariables, $variables);
     }

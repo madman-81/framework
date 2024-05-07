@@ -10,13 +10,12 @@ use Illuminate\Routing\Route;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Routing\UrlGenerator;
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 use Symfony\Component\Routing\Exception\RouteNotFoundException;
 
-if (PHP_VERSION_ID >= 80100) {
-    include_once 'Enums.php';
-}
+include_once 'Enums.php';
 
 class RoutingUrlGeneratorTest extends TestCase
 {
@@ -41,6 +40,24 @@ class RoutingUrlGeneratorTest extends TestCase
         );
 
         $this->assertSame('https://www.foo.com/foo/bar', $url->to('foo/bar'));
+    }
+
+    public function testQueryGeneration()
+    {
+        $url = new UrlGenerator(
+            new RouteCollection,
+            Request::create('http://www.foo.com/')
+        );
+
+        $this->assertSame('http://www.foo.com/foo/bar', $url->query('foo/bar'));
+        $this->assertSame('http://www.foo.com/foo/bar?0=foo', $url->query('foo/bar', ['foo']));
+        $this->assertSame('http://www.foo.com/foo/bar?baz=boom', $url->query('foo/bar', ['baz' => 'boom']));
+        $this->assertSame('http://www.foo.com/foo/bar?baz=zee&zal=bee', $url->query('foo/bar?baz=boom&zal=bee', ['baz' => 'zee']));
+        $this->assertSame('http://www.foo.com/foo/bar?zal=bee', $url->query('foo/bar?baz=boom&zal=bee', ['baz' => null]));
+        $this->assertSame('http://www.foo.com/foo/bar?baz=boom', $url->query('foo/bar?baz=boom', ['nonexist' => null]));
+        $this->assertSame('http://www.foo.com/foo/bar', $url->query('foo/bar?baz=boom', ['baz' => null]));
+        $this->assertSame('https://www.foo.com/foo/bar/baz?foo=bar&zal=bee', $url->query('foo/bar?foo=bar', ['zal' => 'bee'], ['baz'], true));
+        $this->assertSame('http://www.foo.com/foo/bar?baz[0]=boom&baz[1]=bam&baz[2]=bim', urldecode($url->query('foo/bar', ['baz' => ['boom', 'bam', 'bim']])));
     }
 
     public function testAssetGeneration()
@@ -589,9 +606,7 @@ class RoutingUrlGeneratorTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider providerRouteParameters
-     */
+    #[DataProvider('providerRouteParameters')]
     public function testUrlGenerationForControllersRequiresPassingOfRequiredParameters($parameters)
     {
         $this->expectException(UrlGenerationException::class);
@@ -643,9 +658,7 @@ class RoutingUrlGeneratorTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider provideParametersAndExpectedMeaningfulExceptionMessages
-     */
+    #[DataProvider('provideParametersAndExpectedMeaningfulExceptionMessages')]
     public function testUrlGenerationThrowsExceptionForMissingParametersWithMeaningfulMessage($parameters, $expectedMeaningfulExceptionMessage)
     {
         $this->expectException(UrlGenerationException::class);
@@ -766,7 +779,7 @@ class RoutingUrlGeneratorTest extends TestCase
 
         $this->assertTrue($url->hasValidSignature($request));
 
-        $request = Request::create($url->signedRoute('foo').'?tempered=true');
+        $request = Request::create($url->signedRoute('foo').'?tampered=true');
 
         $this->assertFalse($url->hasValidSignature($request));
     }
@@ -814,7 +827,7 @@ class RoutingUrlGeneratorTest extends TestCase
 
         $this->assertTrue($url->hasValidSignature($request, false));
 
-        $request = Request::create($url->signedRoute('foo', [], null, false).'?tempered=true');
+        $request = Request::create($url->signedRoute('foo', [], null, false).'?tampered=true');
 
         $this->assertFalse($url->hasValidSignature($request, false));
     }
@@ -893,7 +906,7 @@ class RoutingUrlGeneratorTest extends TestCase
 
         $this->assertTrue($url->hasValidSignature($request));
 
-        $request = Request::create($url->signedRoute('foo').'?tempered=true');
+        $request = Request::create($url->signedRoute('foo').'?tampered=true');
 
         $this->assertFalse($url->hasValidSignature($request));
 
@@ -907,6 +920,18 @@ class RoutingUrlGeneratorTest extends TestCase
 
         $this->assertTrue($url2->hasValidSignature($request));
         $this->assertFalse($url->hasValidSignature($request));
+    }
+
+    public function testMissingNamedRouteResolution()
+    {
+        $url = new UrlGenerator(
+            new RouteCollection,
+            Request::create('http://www.foo.com/')
+        );
+
+        $url->resolveMissingNamedRoutesUsing(fn ($name, $parameters, $absolute) => 'test-url');
+
+        $this->assertSame('test-url', $url->route('foo'));
     }
 }
 

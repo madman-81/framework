@@ -329,6 +329,17 @@ class SessionStoreTest extends TestCase
         $this->assertEquals(['qu' => 'ux'], $session->only(['qu']));
     }
 
+    public function testExcept()
+    {
+        $session = $this->getSession();
+        $session->put('foo', 'bar');
+        $session->put('bar', 'baz');
+        $session->put('qu', 'ux');
+
+        $this->assertEquals(['foo' => 'bar', 'qu' => 'ux', 'bar' => 'baz'], $session->all());
+        $this->assertEquals(['bar' => 'baz', 'qu' => 'ux'], $session->except(['foo']));
+    }
+
     public function testReplace()
     {
         $session = $this->getSession();
@@ -508,6 +519,22 @@ class SessionStoreTest extends TestCase
 
         $this->assertFalse($session->has('first_name', 'foo'));
         $this->assertFalse($session->has('foo', 'bar'));
+    }
+
+    public function testKeyHasAny()
+    {
+        $session = $this->getSession();
+        $session->put('first_name', 'Mahmoud');
+        $session->put('last_name', 'Ramadan');
+
+        $this->assertTrue($session->hasAny('first_name'));
+        $this->assertTrue($session->hasAny('first_name', 'last_name'));
+        $this->assertTrue($session->hasAny(['first_name', 'last_name']));
+        $this->assertTrue($session->hasAny(['first_name', 'middle_name']));
+
+        $this->assertFalse($session->hasAny('middle_name'));
+        $this->assertFalse($session->hasAny('foo', 'bar'));
+        $this->assertFalse($session->hasAny(['foo', 'bar']));
     }
 
     public function testKeyExists()
